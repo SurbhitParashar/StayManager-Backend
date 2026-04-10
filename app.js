@@ -9,7 +9,7 @@ const app=express();
 const cors = require('cors');
 
 app.use(cors({
-  origin: 'https://stay-manager-frontend.vercel.app/',
+  origin: 'https://stay-manager-frontend.vercel.app',
   credentials: true
 }));
 

@@ -5,7 +5,7 @@ require('dotenv').config();
 
 exports.login = async (req, res) => {
   const { email, password } = req.body;
-  
+
   const user = await pool.query(
     'SELECT * FROM users WHERE email = $1 AND is_active = TRUE',
     [email]
@@ -25,9 +25,13 @@ exports.login = async (req, res) => {
     process.env.JWT_SECRET,
     { expiresIn: '1d' }
   );
-  
 
-  res.cookie('token', token, { httpOnly: true });
-  
+
+  res.cookie('token', token, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "None"
+  });
+
   res.json({ message: 'Login successful' });
 };

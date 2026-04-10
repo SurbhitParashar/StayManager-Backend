@@ -8,10 +8,24 @@ const propertyRoutes=require('./routes/propertyRoutes')
 const app=express();
 const cors = require('cors');
 
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://stay-manager-frontend.vercel.app"
+];
+
 app.use(cors({
-  origin: 'https://stay-manager-frontend.vercel.app',
+  origin: function (origin, callback) {
+    console.log("Incoming origin:", origin);
+
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("CORS blocked"));
+    }
+  },
   credentials: true
 }));
+
 
 app.use(express.json());
 app.use(cookieParser());

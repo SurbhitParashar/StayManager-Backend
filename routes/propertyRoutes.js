@@ -3,6 +3,6 @@ const router=express.Router();
 const { getProperties } =require('../controllers/propertyController');
 const auth=require('../middleware/authMiddleware');
 
-router.get('/properties',auth ,getProperties);
+router.get('/' ,getProperties);
 
 module.exports=router;

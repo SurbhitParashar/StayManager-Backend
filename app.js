@@ -31,8 +31,8 @@ app.use(express.json());
 app.use(cookieParser());
 
 app.use('/api/auth',authRoutes);
-app.use('/api',bookingRoutes);
-app.use('/api',propertyRoutes);
+app.use('/api/',bookingRoutes); //might cause harm in future not only /api 
+app.use('/api/properties',propertyRoutes);
 
 
 module.exports=app;

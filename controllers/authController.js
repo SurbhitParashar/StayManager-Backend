@@ -5,12 +5,12 @@ require('dotenv').config();
 
 exports.login = async (req, res) => {
   const { email, password } = req.body;
-  console.log(email, password);
+
   const user = await pool.query(
     'SELECT * FROM users WHERE email = $1 AND is_active = TRUE',
     [email]
   );
-  console.log(user);
+
   if (user.rows.length === 0) {
     return res.status(401).json({ message: 'Invalid credentials' });
   }
@@ -27,11 +27,16 @@ exports.login = async (req, res) => {
     { expiresIn: '1d' }
   );
 
+  const isProduction = process.env.NODE_ENV === 'production';
+  const cookieSecure = process.env.COOKIE_SECURE
+    ? process.env.COOKIE_SECURE === 'true'
+    : isProduction;
+  const cookieSameSite = process.env.COOKIE_SAME_SITE || (isProduction ? 'none' : 'lax');
 
   res.cookie('token', token, {
     httpOnly: true,
-    secure: true,
-    sameSite: "None"
+    secure: cookieSecure,
+    sameSite: cookieSameSite
   });
 
   res.json({ message: 'Login successful' });

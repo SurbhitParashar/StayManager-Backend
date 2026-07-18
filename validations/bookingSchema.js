@@ -22,7 +22,9 @@ const bookingSchema = z.object({
     'cash transaction'
   ]),
 
-  status: z.enum(['booked', 'cancelled']).optional()
+  status: z.enum(['booked', 'cancelled']).optional(),
+
+  notes: z.string().max(1000).optional()
 })
 .refine(data =>
   new Date(data.end_date) > new Date(data.start_date),

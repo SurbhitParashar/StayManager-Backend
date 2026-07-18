@@ -1,212 +1,202 @@
 const pool = require('../config/db');
-const bookingSchema =require('../validations/bookingSchema');
+const bookingSchema = require('../validations/bookingSchema');
+const reservationService = require('../services/reservationService');
+const reservationRepository = require('../repositories/reservationRepository');
 
+const parseValidationError = (err) => err.errors || err.issues;
+
+const sourceFromPlatform = (platform) => {
+  if (platform === 'vrbo' || platform === 'airbnb') return platform;
+  return 'other';
+};
+
+const splitName = (name = '') => {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return {
+    first_name: parts[0] || 'Guest',
+    last_name: parts.slice(1).join(' ') || parts[0] || 'Guest',
+  };
+};
+
+const legacyPayloadToReservation = (data) => {
+  const guestName = splitName(data.name);
+
+  return {
+    guest: {
+      ...guestName,
+      email: data.email,
+      phone: data.phone,
+      country: 'USA',
+    },
+    property_id: data.property_id,
+    source: sourceFromPlatform(data.platform),
+    arrival_date: data.start_date,
+    departure_date: data.end_date,
+    status: data.status || 'booked',
+    notes: data.notes || null,
+    financials: {
+      rent_total: data.total_amount,
+      total_guest_payment: data.total_amount,
+      subtotal_due_owner: data.total_amount,
+      payout_to_owner: data.total_amount,
+    },
+    payments: [
+      {
+        payment_number: 1,
+        amount_due: data.total_amount,
+        amount_paid: data.total_amount,
+        payment_method: data.payment_mode,
+        payment_status: 'paid',
+      },
+    ],
+  };
+};
+
+const getReservationIdFromLegacyId = async (id) => {
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    return id;
+  }
+
+  const result = await pool.query(
+    'SELECT reservation_id FROM legacy_booking_reservation_map WHERE legacy_booking_id = $1',
+    [id]
+  );
+
+  return result.rows[0]?.reservation_id || null;
+};
 
 exports.createBooking = async (req, res) => {
-  const client = await pool.connect();
-
   try {
-  const validatedData = bookingSchema.parse({
+    const validatedData = bookingSchema.parse({
       ...req.body,
       property_id: Number(req.body.property_id),
-      total_amount: Number(req.body.total_amount)
+      total_amount: Number(req.body.total_amount),
     });
 
-    
-    const {
-      name,
-      email,
-      phone,
-      property_id,
-      platform,
-      start_date,
-      end_date,
-      total_amount,
-      payment_mode,
-      status
-    } = validatedData;
-
-    await client.query('BEGIN');
-
-    // 1. Insert or get customer
-    let customer = await client.query(
-      'SELECT customer_id FROM customers WHERE email = $1',
-      [email]
-    );
-
-    let customer_id;
-
-    if (customer.rows.length === 0) {
-      const newCustomer = await client.query(
-        `INSERT INTO customers (name, email, phone)
-         VALUES ($1, $2, $3)
-         RETURNING customer_id`,
-        [name, email, phone]
-      );
-
-      customer_id = newCustomer.rows[0].customer_id;
-    } else {
-      customer_id = customer.rows[0].customer_id;
-    }
-
-    // 2. Insert booking
-    const booking = await client.query(
-      `INSERT INTO bookings 
-      (customer_id, property_id, platform, start_date, end_date, total_amount, payment_mode, status)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-      RETURNING *`,
-      [
-        customer_id,
-        property_id,
-        platform,
-        start_date,
-        end_date,
-        total_amount,
-        payment_mode,
-        status || 'booked'
-      ]
-    );
-
-    await client.query('COMMIT');
+    const reservation = await reservationService.createReservation(legacyPayloadToReservation(validatedData));
 
     res.json({
       message: 'Booking created successfully',
-      booking: booking.rows[0]
+      booking: reservation,
     });
-
   } catch (err) {
-    await client.query('ROLLBACK');
-    if (err.errors) {
-      return res.status(400).json({
-        error: err.errors[0].message
-      });
+    const validationErrors = parseValidationError(err);
+    if (validationErrors) {
+      return res.status(400).json({ error: validationErrors[0].message });
+    }
+
+    if (err.code === '23P01') {
+      return res.status(409).json({ error: 'Booking overlaps an existing reservation for this property' });
     }
 
     console.error(err);
     res.status(500).json({ message: 'Server error' });
-
-  } finally {
-    client.release();
   }
 };
-
-
 
 exports.getAllBookings = async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT 
-        b.booking_id,
-        c.name,
-        c.email,
-        c.phone,
-        p.property_name,
-        b.platform,
-        b.start_date,
-        b.end_date,
-        b.total_amount,
-        b.payment_mode,
-        b.status
-      FROM bookings b
-      JOIN customers c ON b.customer_id = c.customer_id
-      JOIN properties p ON b.property_id = p.property_id
-      ORDER BY b.created_at DESC
+      SELECT *
+      FROM booking_compat_view
+      ORDER BY created_at DESC
     `);
 
     res.json(result.rows);
-
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Error fetching bookings' });
   }
 };
 
-
-// delete booking
 exports.deleteBooking = async (req, res) => {
   try {
-    const { id } = req.params;
+    const reservationId = await getReservationIdFromLegacyId(req.params.id);
 
-    const result = await pool.query(
-      'DELETE FROM bookings WHERE booking_id = $1 RETURNING *',
-      [id]
-    );
+    if (!reservationId) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
 
-    if (result.rows.length === 0) {
+    const deleted = await reservationRepository.softDeleteReservation(reservationId);
+
+    if (!deleted) {
       return res.status(404).json({ message: 'Booking not found' });
     }
 
     res.json({ message: 'Booking deleted successfully' });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Error deleting booking' });
   }
 };
 
-
-
 exports.updateBooking = async (req, res) => {
   try {
-    const { id } = req.params;
+    const reservationId = await getReservationIdFromLegacyId(req.params.id);
 
-    const {
-      property_id,
-      platform,
-      start_date,
-      end_date,
-      total_amount,
-      payment_mode,
-      status
-    } = req.body;
-
-    const result = await pool.query(
-      `UPDATE bookings
-       SET property_id=$1, platform=$2, start_date=$3, end_date=$4,
-           total_amount=$5, payment_mode=$6, status=$7
-       WHERE booking_id=$8
-       RETURNING *`,
-      [
-        property_id,
-        platform,
-        start_date,
-        end_date,
-        total_amount,
-        payment_mode,
-        status,
-        id
-      ]
-    );
-
-    if (result.rows.length === 0) {
+    if (!reservationId) {
       return res.status(404).json({ message: 'Booking not found' });
     }
 
-    res.json(result.rows[0]);
+    const existing = await reservationRepository.getReservationById(reservationId);
 
+    if (!existing) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    const validatedData = bookingSchema.parse({
+      ...req.body,
+      property_id: Number(req.body.property_id),
+      total_amount: Number(req.body.total_amount),
+    });
+
+    const payload = {
+      ...legacyPayloadToReservation(validatedData),
+      guest_id: existing.guest_id,
+      guest: undefined,
+    };
+
+    const reservation = await reservationService.updateReservation(reservationId, payload);
+    res.json(reservation);
   } catch (err) {
+    const validationErrors = parseValidationError(err);
+    if (validationErrors) {
+      return res.status(400).json({ error: validationErrors[0].message });
+    }
+
+    if (err.code === '23P01') {
+      return res.status(409).json({ error: 'Booking overlaps an existing reservation for this property' });
+    }
+
     console.error(err);
     res.status(500).json({ message: 'Update failed' });
   }
 };
 
-
-
 exports.getBookingById = async (req, res) => {
-  const { id } = req.params;
+  try {
+    const reservationId = await getReservationIdFromLegacyId(req.params.id);
 
-  const result = await pool.query(`
-    SELECT 
-      b.*, 
-      c.name, c.email, c.phone
-    FROM bookings b
-    JOIN customers c ON b.customer_id = c.customer_id
-    WHERE b.booking_id = $1
-  `, [id]);
+    if (!reservationId) {
+      return res.status(404).json({ message: 'Not found' });
+    }
 
-  if (result.rows.length === 0) {
-    return res.status(404).json({ message: 'Not found' });
+    const result = await pool.query(
+      `
+        SELECT *
+        FROM booking_compat_view
+        WHERE reservation_id = $1
+      `,
+      [reservationId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Error fetching booking' });
   }
-
-  res.json(result.rows[0]);
 };

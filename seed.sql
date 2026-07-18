@@ -32,10 +32,10 @@ INSERT INTO customers (name, email, phone) VALUES
 -- BOOKINGS (5 samples)
 -- =========================
 INSERT INTO bookings 
-(customer_id, property_id, platform, start_date, end_date, total_amount, payment_mode, status)
+(customer_id, property_id, platform, start_date, end_date, total_amount, payment_mode, status, notes)
 VALUES
-(1, 1, 'airbnb', '2026-05-01', '2026-05-05', 500.00, 'online transaction', 'booked'),
-(2, 2, 'vrbo', '2026-06-10', '2026-06-15', 750.00, 'online transaction', 'booked'),
-(3, 3, 'others', '2026-07-01', '2026-07-03', 300.00, 'cash transaction', 'booked'),
-(4, 4, 'airbnb', '2026-08-12', '2026-08-20', 1200.00, 'online transaction', 'booked'),
-(5, 5, 'vrbo', '2026-09-05', '2026-09-10', 900.00, 'cash transaction', 'booked');
+(1, 1, 'airbnb', '2026-05-01', '2026-05-05', 500.00, 'online transaction', 'booked', NULL),
+(2, 2, 'vrbo', '2026-06-10', '2026-06-15', 750.00, 'online transaction', 'booked', NULL),
+(3, 3, 'others', '2026-07-01', '2026-07-03', 300.00, 'cash transaction', 'booked', NULL),
+(4, 4, 'airbnb', '2026-08-12', '2026-08-20', 1200.00, 'online transaction', 'booked', NULL),
+(5, 5, 'vrbo', '2026-09-05', '2026-09-10', 900.00, 'cash transaction', 'booked', NULL);

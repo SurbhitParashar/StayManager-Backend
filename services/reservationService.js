@@ -13,6 +13,8 @@ exports.createReservation = async (data) => {
     if (!guestId && data.guest) {
       const guest = await guestRepository.createGuest(client, data.guest);
       guestId = guest.id;
+    } else if (guestId && data.guest) {
+      await guestRepository.updateGuestWithClient(client, guestId, data.guest);
     }
 
     const reservation = await reservationRepository.createReservation(client, {
@@ -84,6 +86,8 @@ exports.updateReservation = async (id, data) => {
     if (!guestId && data.guest) {
       const guest = await guestRepository.createGuest(client, data.guest);
       guestId = guest.id;
+    } else if (guestId && data.guest) {
+      await guestRepository.updateGuestWithClient(client, guestId, data.guest);
     }
 
     const reservation = await reservationRepository.updateReservation(client, id, {

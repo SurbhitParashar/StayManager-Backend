@@ -126,6 +126,44 @@ exports.updateGuest = async (id, data) => {
   return result.rows[0] || null;
 };
 
+exports.updateGuestWithClient = async (client, id, data) => {
+  const result = await client.query(
+    `
+      UPDATE guests
+      SET
+        first_name = $1,
+        middle_initial = $2,
+        last_name = $3,
+        email = $4,
+        phone = $5,
+        address_line1 = $6,
+        address_line2 = $7,
+        city = $8,
+        state = $9,
+        postal_code = $10,
+        country = $11
+      WHERE id = $12 AND deleted_at IS NULL
+      RETURNING ${guestFields}
+    `,
+    [
+      data.first_name,
+      data.middle_initial || null,
+      data.last_name,
+      data.email || null,
+      data.phone || null,
+      data.address_line1 || null,
+      data.address_line2 || null,
+      data.city || null,
+      data.state || null,
+      data.postal_code || null,
+      data.country || 'USA',
+      id,
+    ]
+  );
+
+  return result.rows[0] || null;
+};
+
 exports.softDeleteGuest = async (id) => {
   const result = await pool.query(
     `

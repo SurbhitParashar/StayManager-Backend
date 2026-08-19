@@ -14,19 +14,34 @@ const buildFilters = (query) => {
     where.push(`r.source = $${params.length}`);
   }
 
+  if (query.property_name) {
+    params.push(`%${query.property_name}%`);
+    where.push(`p.property_name::text ILIKE $${params.length}`);
+  }
+
   if (query.status) {
     params.push(query.status);
     where.push(`r.status = $${params.length}`);
   }
 
-  if (query.start_date) {
-    params.push(query.start_date);
-    where.push(`r.arrival_date >= $${params.length}`);
+  if (query.start_date && query.end_date) {
+    params.push(query.start_date, query.end_date);
+    where.push(`r.arrival_date <= $${params.length} AND r.departure_date >= $${params.length - 1}`);
   }
 
-  if (query.end_date) {
-    params.push(query.end_date);
-    where.push(`r.arrival_date <= $${params.length}`);
+  if (query.month) {
+    params.push(`${query.month}-01`);
+    where.push(`r.arrival_date < ($${params.length}::date + interval '1 month') AND r.departure_date >= $${params.length}::date`);
+  }
+
+  if (query.search) {
+    params.push(`%${query.search}%`);
+    where.push(`(
+      g.first_name ILIKE $${params.length}
+      OR g.last_name ILIKE $${params.length}
+      OR g.email::text ILIKE $${params.length}
+      OR g.phone ILIKE $${params.length}
+    )`);
   }
 
   return { params, where: where.join(' AND ') };
@@ -43,6 +58,8 @@ exports.kpis = async (req, res) => {
           coalesce(avg(rf.total_guest_payment), 0)::numeric(14,2) AS average_reservation_value,
           coalesce(sum(rf.payout_to_owner), 0)::numeric(14,2) AS total_owner_payout
         FROM reservations r
+        JOIN guests g ON g.id = r.guest_id
+        JOIN properties p ON p.property_id = r.property_id
         LEFT JOIN reservation_financials rf ON rf.reservation_id = r.id
         WHERE ${where}
       `,
@@ -66,6 +83,8 @@ exports.revenue = async (req, res) => {
           coalesce(sum(rf.total_guest_payment), 0)::numeric(14,2) AS revenue,
           count(*)::int AS reservations
         FROM reservations r
+        JOIN guests g ON g.id = r.guest_id
+        JOIN properties p ON p.property_id = r.property_id
         LEFT JOIN reservation_financials rf ON rf.reservation_id = r.id
         WHERE ${where}
         GROUP BY date_trunc('month', r.arrival_date)
@@ -93,8 +112,10 @@ exports.propertyPerformance = async (req, res) => {
           coalesce(sum(rf.total_guest_payment), 0)::numeric(14,2) AS revenue,
           coalesce(sum(rf.payout_to_owner), 0)::numeric(14,2) AS owner_payout
         FROM properties p
-        LEFT JOIN reservations r ON r.property_id = p.property_id AND ${where}
+        JOIN reservations r ON r.property_id = p.property_id
+        JOIN guests g ON g.id = r.guest_id
         LEFT JOIN reservation_financials rf ON rf.reservation_id = r.id
+        WHERE ${where}
         GROUP BY p.property_id, p.property_name
         ORDER BY revenue DESC
       `,
@@ -118,6 +139,8 @@ exports.sourceBreakdown = async (req, res) => {
           count(*)::int AS reservations,
           coalesce(sum(rf.total_guest_payment), 0)::numeric(14,2) AS revenue
         FROM reservations r
+        JOIN guests g ON g.id = r.guest_id
+        JOIN properties p ON p.property_id = r.property_id
         LEFT JOIN reservation_financials rf ON rf.reservation_id = r.id
         WHERE ${where}
         GROUP BY r.source

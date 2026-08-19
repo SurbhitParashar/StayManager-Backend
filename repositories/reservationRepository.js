@@ -26,14 +26,53 @@ const reservationListFields = `
   r.status,
   r.notes,
   r.credit_card_collected_offline,
+  rf.rent_total,
+  rf.cleaning_fee,
+  rf.gate_fee,
+  rf.pet_fee,
+  rf.golf_cart_fee,
+  rf.other_fee,
+  rf.discount_amount,
+  rf.adjustment_amount,
+  rf.tax_amount,
+  rf.guest_service_fee,
+  rf.payment_processing_fee,
+  rf.platform_fee,
+  rf.taxes_paid_by_vrbo,
   rf.total_guest_payment,
   rf.amount_paid_to_vrbo,
+  rf.subtotal_due_owner,
   rf.payout_to_owner,
+  ra.status AS agreement_status,
+  ra.sent_at AS agreement_sent_at,
+  ra.received_at AS agreement_received_at,
+  ra.notes AS agreement_notes,
+  rv.received AS review_received,
+  rv.rating AS review_rating,
+  rv.review_text,
+  rv.received_at AS review_received_at,
+  COALESCE((
+    SELECT json_agg(
+      json_build_object(
+        'payment_number', rp.payment_number,
+        'due_date', rp.due_date,
+        'amount_due', rp.amount_due,
+        'paid_date', rp.paid_date,
+        'amount_paid', rp.amount_paid,
+        'payment_method', rp.payment_method,
+        'payment_status', rp.payment_status,
+        'notes', rp.notes
+      )
+      ORDER BY rp.payment_number NULLS LAST, rp.due_date NULLS LAST, rp.created_at
+    )
+    FROM reservation_payments rp
+    WHERE rp.reservation_id = r.id AND rp.deleted_at IS NULL
+  ), '[]'::json) AS payments,
   r.created_at,
   r.updated_at
 `;
 
-exports.listReservations = async ({ propertyId, source, status, startDate, endDate, search, limit = 25, offset = 0 }) => {
+exports.listReservations = async ({ propertyId, source, status, startDate, endDate, propertyName, month, search, limit = 25, offset = 0 }) => {
   const params = [];
   const where = ['r.deleted_at IS NULL'];
 
@@ -47,6 +86,11 @@ exports.listReservations = async ({ propertyId, source, status, startDate, endDa
     where.push(`r.source = $${params.length}`);
   }
 
+  if (propertyName) {
+    params.push(`%${propertyName}%`);
+    where.push(`p.property_name::text ILIKE $${params.length}`);
+  }
+
   if (status) {
     params.push(status);
     where.push(`r.status = $${params.length}`);
@@ -55,6 +99,11 @@ exports.listReservations = async ({ propertyId, source, status, startDate, endDa
   if (startDate && endDate) {
     params.push(startDate, endDate);
     where.push(`r.arrival_date <= $${params.length} AND r.departure_date >= $${params.length - 1}`);
+  }
+
+  if (month) {
+    params.push(`${month}-01`);
+    where.push(`r.arrival_date < ($${params.length}::date + interval '1 month') AND r.departure_date >= $${params.length}::date`);
   }
 
   if (search) {
@@ -76,6 +125,8 @@ exports.listReservations = async ({ propertyId, source, status, startDate, endDa
       JOIN guests g ON g.id = r.guest_id
       JOIN properties p ON p.property_id = r.property_id
       LEFT JOIN reservation_financials rf ON rf.reservation_id = r.id
+      LEFT JOIN rental_agreements ra ON ra.reservation_id = r.id
+      LEFT JOIN reviews rv ON rv.reservation_id = r.id
       WHERE ${where.join(' AND ')}
       ORDER BY r.arrival_date DESC, r.created_at DESC
       LIMIT $${params.length - 1}
@@ -95,6 +146,8 @@ exports.getReservationById = async (id) => {
       JOIN guests g ON g.id = r.guest_id
       JOIN properties p ON p.property_id = r.property_id
       LEFT JOIN reservation_financials rf ON rf.reservation_id = r.id
+      LEFT JOIN rental_agreements ra ON ra.reservation_id = r.id
+      LEFT JOIN reviews rv ON rv.reservation_id = r.id
       WHERE r.id = $1 AND r.deleted_at IS NULL
     `,
     [id]

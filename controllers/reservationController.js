@@ -13,6 +13,8 @@ exports.listReservations = async (req, res) => {
       status: req.query.status,
       startDate: req.query.start_date,
       endDate: req.query.end_date,
+      propertyName: req.query.property_name,
+      month: req.query.month,
       search: req.query.search,
       limit: Math.min(Number(req.query.limit) || 25, 100),
       offset: Number(req.query.offset) || 0,

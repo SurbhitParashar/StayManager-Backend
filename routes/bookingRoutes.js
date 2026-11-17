@@ -1,3 +1,4 @@
+const { requirePermission } = require('../config/permissions');
 const express=require('express');
 
 const router=express.Router();
@@ -8,11 +9,11 @@ const {createBooking,
     updateBooking,
     getBookingById}=require('../controllers/bookingController')
 
-router.post('/booking',auth,createBooking)
-router.get('/booking',auth,getAllBookings)
-router.delete('/booking/:id',auth,deleteBooking)
-router.put('/booking/:id',auth,updateBooking)
-router.get('/booking/:id',auth,getBookingById)
+router.post('/booking', auth, requirePermission('data.write'),createBooking)
+router.get('/booking', auth, requirePermission('data.read'),getAllBookings)
+router.delete('/booking/:id', auth, requirePermission('data.delete'),deleteBooking)
+router.put('/booking/:id', auth, requirePermission('data.write'),updateBooking)
+router.get('/booking/:id', auth, requirePermission('data.read'),getBookingById)
 
 
 module.exports=router;

@@ -24,7 +24,7 @@ npm start
 | Delete business records | No | No | Yes |
 | Create accounts, change roles, disable accounts | No | No | Yes |
 
-The RBAC migration promotes the first active user ordered by user_id to admin; all other existing accounts become viewers. New accounts default to viewer. Confirm that initial operator before rollout. If there are no active users, provision an admin through an operator-controlled database session before launch. Existing sessions must sign in again after migration.
+The RBAC migration preserves existing admin, manager, and viewer roles. Null or unknown legacy roles become viewers, and new accounts default to viewer. If no active admin exists, the first active user ordered by user_id becomes admin. Confirm the active administrators before rollout. If there are no active users, provision an admin through an operator-controlled database session before launch. Existing sessions must sign in again after migration.
 
 GET /api/auth/me returns the current user and server-computed permissions. POST /api/auth/logout revokes all sessions for that account. Every protected request reloads role/active status and checks the session version. Role/status changes revoke existing sessions. The last active admin cannot be disabled or demoted; access changes are audited in user_access_audit.
 
